@@ -23,6 +23,9 @@ BASE_BOXES = [
     (318, 8, 371, 128),
     (375, 8, 428, 128),
 ]
+SHAPE_FEATURE_SIZE = (32, 64)
+DEFAULT_SHAPE_WEIGHT = 0.2
+ONE_L_RATIO_THRESHOLD = 0.43
 
 
 def parse_args():
@@ -32,6 +35,7 @@ def parse_args():
     parser.add_argument("--weight_path", type=str, default=str(CODES_DIR / "ViT-B-32.pt"))
     parser.add_argument("--output_path", type=str, default=str(RESULT_DIR / "plate_result.json"))
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--shape_weight", type=float, default=DEFAULT_SHAPE_WEIGHT)
     parser.add_argument("--evaluate_by_filename", action="store_true")
     return parser.parse_args()
 
@@ -72,11 +76,58 @@ def tighten_crop(image, pad=4):
     return canvas
 
 
+def build_shape_feature(image, size=SHAPE_FEATURE_SIZE):
+    glyph = tighten_crop(image)
+    mask = white_mask(glyph).astype(np.float32)
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        resized = np.zeros((size[1], size[0]), dtype=np.float32)
+    else:
+        x1, x2 = int(xs.min()), int(xs.max()) + 1
+        y1, y2 = int(ys.min()), int(ys.max()) + 1
+        cropped = (mask[y1:y2, x1:x2] * 255).astype(np.uint8)
+        resized = np.asarray(
+            Image.fromarray(cropped, mode="L").resize(size, Image.Resampling.BILINEAR),
+            dtype=np.float32,
+        ) / 255.0
+
+    row_profile = resized.mean(axis=1)
+    col_profile = resized.mean(axis=0)
+    feature = np.concatenate([resized.flatten(), row_profile, col_profile]).astype(np.float32)
+    norm = np.linalg.norm(feature)
+    if norm > 0:
+        feature = feature / norm
+    return feature
+
+
+def glyph_aspect_ratio(image):
+    glyph = tighten_crop(image)
+    mask = white_mask(glyph)
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0 or len(ys) == 0:
+        return 0.0
+    width = int(xs.max()) - int(xs.min()) + 1
+    height = int(ys.max()) - int(ys.min()) + 1
+    return width / max(height, 1)
+
+
+def resolve_alnum_prediction(names, similarities, crop):
+    best_name = names[int(similarities.argmax(dim=-1).item())]
+    if best_name not in {"1", "L"}:
+        return best_name
+    return "1" if glyph_aspect_ratio(crop) < ONE_L_RATIO_THRESHOLD else "L"
+
+
 def encode_images(model, preprocess, device, images):
     with torch.no_grad():
         image_tensor = torch.cat([preprocess(image).unsqueeze(0) for image in images], dim=0).to(device)
         features = model.encode_image(image_tensor)
         return features / features.norm(dim=-1, keepdim=True)
+
+
+def encode_shape_features(device, images):
+    features = np.stack([build_shape_feature(image) for image in images], axis=0)
+    return torch.from_numpy(features).to(device)
 
 
 def build_template_bank(model, preprocess, device, template_dir):
@@ -97,12 +148,14 @@ def build_template_bank(model, preprocess, device, template_dir):
     return {
         "province_names": province_names,
         "province_features": encode_images(model, preprocess, device, province_images),
+        "province_shape_features": encode_shape_features(device, province_images),
         "alnum_names": alnum_names,
         "alnum_features": encode_images(model, preprocess, device, alnum_images),
+        "alnum_shape_features": encode_shape_features(device, alnum_images),
     }
 
 
-def recognize_plate(model, preprocess, device, banks, plate_path):
+def recognize_plate(model, preprocess, device, banks, plate_path, shape_weight=DEFAULT_SHAPE_WEIGHT):
     image = Image.open(plate_path).convert("RGB")
     boxes = scale_boxes(*image.size)
     predictions = []
@@ -110,21 +163,27 @@ def recognize_plate(model, preprocess, device, banks, plate_path):
     for index, box in enumerate(boxes):
         crop = tighten_crop(image.crop(box))
         crop_feature = encode_images(model, preprocess, device, [crop])
+        crop_shape_feature = encode_shape_features(device, [crop])
         if index == 0:
-            similarities = crop_feature @ banks["province_features"].T
+            similarities = (crop_feature @ banks["province_features"].T) + (
+                shape_weight * (crop_shape_feature @ banks["province_shape_features"].T)
+            )
             predictions.append(banks["province_names"][int(similarities.argmax(dim=-1).item())])
         else:
-            similarities = crop_feature @ banks["alnum_features"].T
-            predictions.append(banks["alnum_names"][int(similarities.argmax(dim=-1).item())])
+            similarities = (crop_feature @ banks["alnum_features"].T) + (
+                shape_weight * (crop_shape_feature @ banks["alnum_shape_features"].T)
+            )
+            predictions.append(resolve_alnum_prediction(banks["alnum_names"], similarities, crop))
 
     return "".join(predictions)
 
 
 class PlateRecognizer:
-    def __init__(self, template_dir, weight_path, device="cpu"):
+    def __init__(self, template_dir, weight_path, device="cpu", shape_weight=DEFAULT_SHAPE_WEIGHT):
         self.template_dir = template_dir
         self.weight_path = weight_path
         self.device = torch.device(device)
+        self.shape_weight = shape_weight
         self.model, self.preprocess = clip.load(self.weight_path, device=self.device)
         self.model.eval()
         self.template_bank = build_template_bank(self.model, self.preprocess, self.device, self.template_dir)
@@ -136,6 +195,7 @@ class PlateRecognizer:
             device=self.device,
             banks=self.template_bank,
             plate_path=plate_path,
+            shape_weight=self.shape_weight,
         )
         return {
             "plate_image": Path(plate_path).name,
@@ -155,7 +215,14 @@ def main():
     results = []
     right_num = 0
     for plate_path in plate_paths:
-        prediction = recognize_plate(model, preprocess, device, template_bank, plate_path)
+        prediction = recognize_plate(
+            model,
+            preprocess,
+            device,
+            template_bank,
+            plate_path,
+            shape_weight=args.shape_weight,
+        )
         item = {
             "plate_image": plate_path.name,
             "prediction": prediction,

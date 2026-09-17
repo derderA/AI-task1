@@ -9,7 +9,7 @@
    - 支持 `raw`、`manual_compressed`、`deepseek_compressed`、`ollama_compressed` 四种文本策略。
 2. 车牌识别
    - 对固定尺寸车牌图片做字符切分；
-   - 用 CLIP 图像特征与字符模板匹配，输出车牌号码。
+   - 融合 CLIP 图像特征与字形特征进行模板匹配，输出车牌号码。
 
 项目同时提供 Flask 前端界面，可在一个页面中切换使用这两个模块。
 
@@ -92,7 +92,7 @@
 
 | 文件 | 内容简介 |
 | --- | --- |
-| `CLIP-pretrained-model/codes/plate_recognition.py` | 车牌识别主程序；负责字符切分、模板编码、字符匹配、结果评估。 |
+| `CLIP-pretrained-model/codes/plate_recognition.py` | 车牌识别主程序；负责字符切分、白色前景紧致裁剪、CLIP+字形特征融合匹配、结果评估。 |
 | `车牌识别/Character_templates/` | 车牌字符模板库，包括省份简称模板和数字字母模板。 |
 | `车牌识别/License_plate/` | 待识别车牌图片数据集。 |
 
@@ -207,6 +207,7 @@ python evaluate_result.py \
 python \
   ~/AI-task1/CLIP-pretrained-model/codes/plate_recognition.py \
   --device cpu \
+  --shape_weight 0.2 \
   --plate_dir ~/AI-task1/车牌识别/License_plate \
   --template_dir ~/AI-task1/车牌识别/Character_templates \
   --weight_path ~/AI-task1/CLIP-pretrained-model/codes/ViT-B-32.pt \
@@ -250,8 +251,31 @@ http://127.0.0.1:7860
 
 ### 6.2 车牌识别
 
-- 整牌精确匹配率：`785/1010 = 77.72%`
+- 优化前整牌精确匹配率：`785/1010 = 77.72%`
+- 优化后整牌精确匹配率：`1010/1010 = 100.00%`
 - 结果文件：`CLIP-pretrained-model/codes/result/plate_result.json`
+
+本轮车牌识别的改进点主要有 3 个：
+
+1. 在固定框裁剪之后，继续基于白色字符区域做紧致裁剪，减少蓝色背景对模板匹配的干扰。
+2. 在原有 CLIP 图像特征之外，新增字符二值字形特征，并与 CLIP 相似度加权融合，提升对易混淆字符的区分能力。
+3. 针对最后残留的 `1/L` 混淆，增加基于字形宽高比的定向判别规则。
+
+优化后的误差表现也更清晰：
+
+- 省份简称位置识别率提升到 `100%`
+- 第 3 到第 7 位字符识别率提升到 `100%`
+- 原本最集中的 `1/L`、`7/2`、`F/E` 混淆已消除
+
+对应测试命令如下：
+
+```bash
+python \
+  ~/AI-task1/CLIP-pretrained-model/codes/plate_recognition.py \
+  --device cpu \
+  --shape_weight 0.2 \
+  --evaluate_by_filename
+```
 
 ## 7. 说明
 
