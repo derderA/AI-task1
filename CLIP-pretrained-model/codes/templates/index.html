@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>基于CLIP系列的文本图像匹配及其应用</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ===================== 顶部 Banner ===================== -->
+    <header class="hero">
+      <div class="hero-orb hero-orb--1"></div>
+      <div class="hero-orb hero-orb--2"></div>
+      <div class="hero-orb hero-orb--3"></div>
+      <div class="hero-grid"></div>
+
+      <div class="hero-inner">
+        <div class="hero-text">
+          <div class="hero-kicker">
+            <span class="kicker-dot"></span>
+            <span>课程实验 · 多模态检索系统</span>
+          </div>
+          <h1>基于 CLIP 系列的文本图像匹配及其应用</h1>
+          <p class="hero-sub">在同一个界面中提供「文本图像匹配」与「车牌识别」两大模块，基于 CLIP 双塔模型完成跨模态特征对齐，可按需切换使用。</p>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat">
+            <span class="stat-value">{{ image_count }}</span>
+            <span class="stat-label">图库图片</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">ViT-B-32</span>
+            <span class="stat-label">CLIP 模型</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">2</span>
+            <span class="stat-label">功能模块</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===================== 模块切换 ===================== -->
+    <nav class="module-switch" aria-label="功能模块切换">
+      <a class="module-link {% if active_module == 'text' %}active{% endif %}" href="/?module=text">
+        <span class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+            <circle cx="8.5" cy="8.5" r="1.6"></circle>
+            <path d="M21 15.5l-4.5-4.5L6 21"></path>
+            <circle cx="16" cy="17.5" r="2.6"></circle>
+            <line x1="17.6" y1="19.1" x2="20.4" y2="21.9"></line>
+          </svg>
+        </span>
+        <span class="module-link-text">
+          <strong>文本图像匹配</strong>
+          <small>输入文本描述，检索最匹配的图片</small>
+        </span>
+        <span class="module-link-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </span>
+      </a>
+
+      <a class="module-link {% if active_module == 'plate' %}active{% endif %}" href="/?module=plate">
+        <span class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="18" height="12" rx="2.5"></rect>
+            <line x1="7" y1="10" x2="7" y2="14"></line>
+            <line x1="11" y1="10" x2="11" y2="14"></line>
+            <line x1="15" y1="10" x2="15" y2="14"></line>
+            <line x1="19" y1="10" x2="19" y2="14"></line>
+          </svg>
+        </span>
+        <span class="module-link-text">
+          <strong>车牌识别</strong>
+          <small>上传车牌图片，CLIP 字符匹配识别号牌</small>
+        </span>
+        <span class="module-link-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </span>
+      </a>
+    </nav>
+
+    <!-- ===================== 模块一：文本图像匹配 ===================== -->
+    {% if active_module == 'text' %}
+    <section class="module-panel">
+      <header class="module-header">
+        <div>
+          <p class="module-eyebrow">模块 01</p>
+          <h2>文本图像匹配</h2>
+          <p class="module-desc">输入一段自然语言描述，选择缩句策略，系统将文本与图库图像映射到同一语义空间，检索出最匹配的图片，并支持动态扩充图库。</p>
+        </div>
+        <ol class="steps">
+          <li><span class="step-num">1</span><span>输入文本</span></li>
+          <li><span class="step-num">2</span><span>选择策略</span></li>
+          <li><span class="step-num">3</span><span>检索匹配</span></li>
+        </ol>
+      </header>
+
+      <main class="layout">
+        <!-- 检索表单 -->
+        <section class="card">
+          <header class="card-head">
+            <span class="card-icon card-icon--indigo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"></circle><line x1="21" y1="21" x2="16.2" y2="16.2"></line></svg>
+            </span>
+            <div>
+              <h3>文本检索</h3>
+              <p>用一句话描述你想找的图片</p>
+            </div>
+          </header>
+
+          <form method="post" class="form-block">
+            <input type="hidden" name="action" value="search">
+            <input type="hidden" name="module" value="text">
+
+            <label for="query">输入检索文本</label>
+            <textarea id="query" name="query" rows="5" placeholder="例如：A woman with glasses smiling while reviewing photos on a camera.">{{ query }}</textarea>
+
+            <div class="examples">
+              <span class="examples-label">试试示例</span>
+              {% for ex in examples %}
+              <button type="button" class="example-chip" data-caption="{{ ex }}" title="点击填入输入框">{{ ex|truncate(34, True, '…') }}</button>
+              {% endfor %}
+            </div>
+
+            <label for="strategy">缩句 / 检索策略</label>
+            <div class="strategy-group">
+              {% for value, label in strategies %}
+              <label class="strategy-option">
+                <input type="radio" name="strategy" value="{{ value }}" {% if strategy == value %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"></circle><line x1="21" y1="21" x2="16.2" y2="16.2"></line></svg>
+              开始检索
+            </button>
+          </form>
+
+          {% if search_message %}<div class="notice success">{{ search_message }}</div>{% endif %}
+          {% if search_error %}<div class="notice error">{{ search_error }}</div>{% endif %}
+        </section>
+
+        <!-- 上传表单 -->
+        <section class="card">
+          <header class="card-head">
+            <span class="card-icon card-icon--violet">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+            </span>
+            <div>
+              <h3>动态添加图片</h3>
+              <p>上传新图片，实时加入检索图库</p>
+            </div>
+          </header>
+
+          <form method="post" enctype="multipart/form-data" class="form-block">
+            <input type="hidden" name="action" value="upload">
+            <input type="hidden" name="module" value="text">
+
+            <label for="image_file">选择图片文件</label>
+            <input id="image_file" name="image_file" type="file" accept=".jpg,.jpeg,.png,.bmp,.webp">
+
+            <button type="submit" class="btn btn--violet btn--block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+              加入图库
+            </button>
+          </form>
+
+          {% if upload_message %}<div class="notice success">{{ upload_message }}</div>{% endif %}
+          {% if upload_error %}<div class="notice error">{{ upload_error }}</div>{% endif %}
+
+          <div class="tips">
+            <h4>使用说明</h4>
+            <ul>
+              <li>上传后的图片会直接保存到当前图库目录，并在下一次检索时自动参与匹配。</li>
+              <li>选择 <b>DeepSeek 缩句</b> 时，界面优先调用 DeepSeek API，无可用 Key 时自动回退到人工规则缩句。</li>
+              <li>选择 <b>Ollama 缩句</b> 时，将调用本地 <code>http://localhost:11434</code> 部署的模型进行缩句。</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+
+      {% if result %}
+      <section class="result-wrap">
+        <header class="result-heading">
+          <div>
+            <p class="module-eyebrow">检索结果</p>
+            <h3>最佳匹配</h3>
+          </div>
+          <div class="score-pill">
+            <span>相似度</span>
+            <strong>{{ '%.4f'|format(result.score) }}</strong>
+          </div>
+        </header>
+
+        <div class="result-card">
+          <div class="image-panel">
+            <img src="{{ url_for('serve_library_image', filename=result.image) }}" alt="matched image">
+            <span class="image-rank">#1</span>
+          </div>
+
+          <div class="result-text">
+            <div class="result-item">
+              <span class="label">原始输入</span>
+              <p>{{ result.caption }}</p>
+            </div>
+            <div class="result-item">
+              <span class="label">用于检索的文本（策略：{{ strategy_label }}）</span>
+              <p class="compressed">{{ result.compressed_text }}</p>
+            </div>
+            <div class="result-meta">
+              <span class="meta-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15.5l-4.5-4.5L6 21"></path></svg>{{ result.image }}</span>
+              <span class="meta-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>共 {{ result.image_count }} 张图库图片</span>
+            </div>
+          </div>
+        </div>
+
+        {% if result.matches|length > 1 %}
+        <div class="matches">
+          <h4>Top {{ result.matches|length }} 候选结果</h4>
+          <div class="matches-grid">
+            {% for m in result.matches %}
+            <figure class="match-card {% if loop.first %}is-best{% endif %}">
+              <div class="match-img">
+                <img src="{{ url_for('serve_library_image', filename=m.image) }}" alt="{{ m.image }}">
+                <span class="image-rank">#{{ loop.index }}</span>
+              </div>
+              <figcaption>
+                <span class="match-name" title="{{ m.image }}">{{ m.image }}</span>
+                <span class="match-score">{{ '%.4f'|format(m.score) }}</span>
+              </figcaption>
+            </figure>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+    </section>
+
+    <!-- ===================== 模块二：车牌识别 ===================== -->
+    {% else %}
+    <section class="module-panel">
+      <header class="module-header">
+        <div>
+          <p class="module-eyebrow">模块 02</p>
+          <h2>车牌识别</h2>
+          <p class="module-desc">上传待识别车牌图片，系统先按固定区域切分字符，再使用 CLIP 图像特征与字符模板进行匹配，最终输出车牌号码。</p>
+        </div>
+        <ol class="steps">
+          <li><span class="step-num">1</span><span>上传图片</span></li>
+          <li><span class="step-num">2</span><span>切分字符</span></li>
+          <li><span class="step-num">3</span><span>特征匹配</span></li>
+        </ol>
+      </header>
+
+      <main class="single-layout">
+        <section class="card">
+          <header class="card-head">
+            <span class="card-icon card-icon--cyan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2.5"></rect><line x1="7" y1="10" x2="7" y2="14"></line><line x1="11" y1="10" x2="11" y2="14"></line><line x1="15" y1="10" x2="15" y2="14"></line><line x1="19" y1="10" x2="19" y2="14"></line></svg>
+            </span>
+            <div>
+              <h3>车牌识别</h3>
+              <p>上传待识别的车牌图片</p>
+            </div>
+          </header>
+
+          <form method="post" enctype="multipart/form-data" class="form-block">
+            <input type="hidden" name="action" value="plate_recognize">
+            <input type="hidden" name="module" value="plate">
+
+            <label for="plate_file">选择车牌图片</label>
+            <input id="plate_file" name="plate_file" type="file" accept=".jpg,.jpeg,.png,.bmp,.webp">
+
+            <button type="submit" class="btn btn--cyan btn--block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7.5"></circle><line x1="21" y1="21" x2="16.2" y2="16.2"></line></svg>
+              开始识别
+            </button>
+          </form>
+
+          {% if plate_message %}<div class="notice success">{{ plate_message }}</div>{% endif %}
+          {% if plate_error %}<div class="notice error">{{ plate_error }}</div>{% endif %}
+
+          <div class="tips">
+            <h4>使用说明</h4>
+            <ul>
+              <li>当前实现使用实验提供的字符模板图片，基于 CLIP 图像特征相似度完成字符匹配。</li>
+              <li>车牌图片尺寸一致时，系统会自动按固定比例切分 7 个字符区域（1 位省份简称 + 6 位字母数字）。</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+
+      {% if plate_result %}
+      <section class="result-wrap">
+        <header class="result-heading">
+          <div>
+            <p class="module-eyebrow">识别结果</p>
+            <h3>车牌号码</h3>
+          </div>
+        </header>
+
+        <div class="result-card plate-result">
+          <div class="image-panel">
+            <img src="{{ url_for('serve_plate_upload', filename=plate_result.plate_image) }}" alt="plate image">
+          </div>
+          <div class="result-text">
+            <div class="result-item">
+              <span class="label">图片文件</span>
+              <p>{{ plate_result.plate_image }}</p>
+            </div>
+            <div class="result-item">
+              <span class="label">识别车牌号</span>
+              <div class="plate-number">
+                <span class="plate-province">{{ plate_result.prediction[:1] }}</span>
+                <span class="plate-sep">·</span>
+                <span class="plate-rest">{{ plate_result.prediction[1:] }}</span>
+              </div>
+            </div>
+            <div class="result-meta">
+              <span class="meta-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>共 7 个字符</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- ===================== 页脚 ===================== -->
+    <footer class="footer">
+      <span>基于 CLIP 系列的文本图像匹配及其应用</span>
+      <span class="footer-sep">·</span>
+      <span>ViT-B-32 双塔模型 · 文本图像检索 + 车牌识别</span>
+    </footer>
+  </div>
+
+  <script>
+    // 点击示例 chip 自动填入检索文本框
+    document.querySelectorAll('.example-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var ta = document.getElementById('query');
+        if (ta) {
+          ta.value = btn.dataset.caption;
+          ta.focus();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

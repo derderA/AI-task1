@@ -1,0 +1,26 @@
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*.pyo
+*$py.class
+.venv/
+venv/
+env/
+
+# ============ 模型权重 / 缓存（超过 GitHub 100MB 单文件限制）============
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# ============ 运行结果 & 缓存 ============
+CLIP-pretrained-model/codes/result/
+
+# ============ 密钥（切勿提交，避免泄露 API Key）============
+CLIP-pretrained-model/codes/deepseek_config.py
+
+# ============ 系统 / 编辑器 ============
+.DS_Store
+*.log
+.idea/
+.vscode/
